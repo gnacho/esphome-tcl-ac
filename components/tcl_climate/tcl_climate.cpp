@@ -170,7 +170,6 @@ void TCLClimate::build_set_cmd(get_cmd_resp_t *get_cmd_resp) {
 
 void TCLClimate::setup() {
   set_update_interval(UPDATE_INTERVAL_MS);
-  this->set_supported_custom_fan_modes({"Silencio"});
 }
 
 // Swing control methods from old code
@@ -234,6 +233,30 @@ void TCLClimate::set_mute(bool mute) {
   }
   build_set_cmd(&gcr);
   ready_to_send_set_cmd_flag = true;
+}
+
+void TCLClimate::set_beep(bool beep) {
+  get_cmd_resp_t gcr = {0};
+  memcpy(gcr.raw, m_get_cmd_resp.raw, sizeof(gcr.raw));
+  build_set_cmd(&gcr);
+
+  uint8_t mask = 0x20;  // bit 5 in byte 7
+  if (beep) {
+    m_set_cmd.raw[7] |= mask;
+  } else {
+    m_set_cmd.raw[7] &= ~mask;
+  }
+
+  // Recalculate XOR checksum
+  uint8_t xor_byte = 0;
+  for (size_t i = 0; i < sizeof(m_set_cmd.raw) - 1; i++) {
+    xor_byte ^= m_set_cmd.raw[i];
+  }
+  m_set_cmd.raw[sizeof(m_set_cmd.raw) - 1] = xor_byte;
+
+  ready_to_send_set_cmd_flag = true;
+  beep_ = beep;
+  ESP_LOGI("TCL", "Beep set to: %s", beep ? "ON" : "OFF");
 }
 
 void TCLClimate::control(const climate::ClimateCall &call) {

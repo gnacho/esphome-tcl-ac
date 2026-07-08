@@ -198,6 +198,8 @@ class TCLClimate : public climate::Climate, public uart::UARTDevice, public Poll
   // Sleep mode: 0=off, 1=default, 2=elderly, 3=young
   uint8_t sleep_mode_ = 0x00;
 
+  bool beep_ = true;
+
   uint8_t set_cmd_base[35] = {0xBB, 0x00, 0x01, 0x03, 0x1D, 0x00, 0x00, 0x64, 0x03, 0xF3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
   get_cmd_resp_t m_get_cmd_resp = {0};
   set_cmd_t m_set_cmd = {0};
@@ -218,6 +220,11 @@ class TCLClimate : public climate::Climate, public uart::UARTDevice, public Poll
 
   void set_mute(bool mute);
   bool is_mute() const { return m_get_cmd_resp.data.mute; }
+
+  void set_beep(bool beep);
+  bool get_beep() const { return beep_; }
+
+  float get_current_temperature() const { return this->current_temperature; }
 
   void setup() override;
   void control(const climate::ClimateCall &call) override;

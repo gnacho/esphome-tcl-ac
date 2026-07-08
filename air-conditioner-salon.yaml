@@ -48,16 +48,19 @@ climate:
 
 # Nota: este modelo no tiene oscilacion horizontal motorizada.
 # El ajuste horizontal es manual (fisico). Solo se expone swing vertical.
+# Humedad y consumo electrico NO estan disponibles por UART en este modelo.
 
 switch:
   - platform: template
-    name: "Silencio"
-    id: silencio_switch
-    icon: "mdi:volume-variant-off"
+    name: "Pitido"
+    id: pitido_switch
+    icon: "mdi:bell"
     turn_on_action:
-      - lambda: 'id(tcl_custom_climate).set_mute(true);'
+      - lambda: 'id(tcl_custom_climate).set_beep(true);'
     turn_off_action:
-      - lambda: 'id(tcl_custom_climate).set_mute(false);'
+      - lambda: 'id(tcl_custom_climate).set_beep(false);'
+    lambda: |-
+      return id(tcl_custom_climate).get_beep();
 
 select:
   - platform: template
@@ -72,7 +75,25 @@ select:
       - "Fix lower"
       - "Fix bottom"
       - "Move full"
+    lambda: |-
+      return id(tcl_custom_climate).vswing_pos;
     set_action:
       then:
         - lambda: |-
             id(tcl_custom_climate).control_vertical_swing(x);
+
+sensor:
+  - platform: template
+    name: "Temperatura Ambiente AC"
+    id: temp_ambiente_ac
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+    device_class: temperature
+    lambda: |-
+      return id(tcl_custom_climate).get_current_temperature();
+    update_interval: 10s
+
+  - platform: uptime
+    name: "Uptime"
+    id: uptime_sensor
+    update_interval: 60s

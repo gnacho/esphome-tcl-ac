@@ -1,0 +1,78 @@
+esphome:
+  name: salon-aire
+  friendly_name: "AC Salon"
+
+esp8266:
+  board: esp01_1m
+
+external_components:
+  - source:
+      type: local
+      path: components
+    components: [tcl_climate]
+
+wifi:
+  ssid: !secret iot_wifi_ssid
+  password: !secret iot_wifi_password
+  power_save_mode: none
+  fast_connect: true
+  min_auth_mode: WPA2
+  ap:
+    ssid: "AC-Salon"
+    password: "slwf01pro"
+
+captive_portal:
+
+logger:
+  baud_rate: 0
+  level: VERBOSE
+
+api:
+
+ota:
+  platform: esphome
+
+uart:
+  id: uart_bus
+  tx_pin: GPIO15
+  rx_pin: GPIO13
+  baud_rate: 9600
+  parity: EVEN
+
+climate:
+  - platform: tcl_climate
+    id: tcl_custom_climate
+    uart_id: uart_bus
+    name: "Aire Salon"
+    icon: "mdi:fan"
+
+# Nota: este modelo no tiene oscilacion horizontal motorizada.
+# El ajuste horizontal es manual (fisico). Solo se expone swing vertical.
+
+switch:
+  - platform: template
+    name: "Silencio"
+    id: silencio_switch
+    icon: "mdi:volume-variant-off"
+    turn_on_action:
+      - lambda: 'id(tcl_custom_climate).set_mute(true);'
+    turn_off_action:
+      - lambda: 'id(tcl_custom_climate).set_mute(false);'
+
+select:
+  - platform: template
+    name: "Swing Vertical"
+    id: vswing
+    entity_category: config
+    options:
+      - "Last position"
+      - "Fix top"
+      - "Fix upper"
+      - "Fix mid"
+      - "Fix lower"
+      - "Fix bottom"
+      - "Move full"
+    set_action:
+      then:
+        - lambda: |-
+            id(tcl_custom_climate).control_vertical_swing(x);

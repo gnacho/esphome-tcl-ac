@@ -2,6 +2,7 @@
 
 #include "esphome/core/component.h"
 #include "esphome/core/automation.h"
+#include "esphome/core/preferences.h"
 #include "esphome/components/uart/uart.h"
 #include "esphome/components/climate/climate.h"
 
@@ -11,11 +12,10 @@ namespace tcl_climate {
 class TCLClimate : public climate::Climate, public uart::UARTDevice, public PollingComponent {
  public:
   TCLClimate(uart::UARTComponent *parent) : UARTDevice(parent) {}
-  TCLClimate() : PollingComponent() {}  // Default constructor for PollingComponent
+  TCLClimate() : PollingComponent() {}
 
   bool is_changed : 1;
   bool eco_ : 1 = false;
-  // Swing position strings
   std::string hswing_pos = "";
   std::string vswing_pos = "";
 
@@ -28,7 +28,7 @@ class TCLClimate : public climate::Climate, public uart::UARTDevice, public Poll
       uint8_t len;
       uint8_t byte_5;
       uint8_t byte_6;
-      
+
       uint8_t mode : 4;
       uint8_t power : 1;
       uint8_t disp : 1;
@@ -70,7 +70,7 @@ class TCLClimate : public climate::Climate, public uart::UARTDevice, public Poll
       uint8_t byte_30;
       uint8_t byte_31;
       uint8_t byte_32;
-      
+
       uint8_t byte_33_bit_0_6 : 7;
       uint8_t mute : 1;
 
@@ -124,7 +124,7 @@ class TCLClimate : public climate::Climate, public uart::UARTDevice, public Poll
       uint8_t len;
       uint8_t byte_5;
       uint8_t byte_6;
-      
+
       uint8_t byte_7_bit_0_1 : 2;
       uint8_t power : 1;
       uint8_t off_timer_en : 1;
@@ -188,19 +188,26 @@ class TCLClimate : public climate::Climate, public uart::UARTDevice, public Poll
       uint8_t hswing_mv : 3;
       uint8_t byte_33_bit_6_7 : 2;
 
+      uint8_t byte_34;
+      uint8_t byte_35;
+      uint8_t byte_36;
+
       uint8_t xor_sum;
     } data;
-    uint8_t raw[35];
+    uint8_t raw[38];
   };
 
   bool ready_to_send_set_cmd_flag = false;
-
-  // Sleep mode: 0=off, 1=default, 2=elderly, 3=young
   uint8_t sleep_mode_ = 0x00;
-
   bool beep_ = true;
 
-  uint8_t set_cmd_base[35] = {0xBB, 0x00, 0x01, 0x03, 0x1D, 0x00, 0x00, 0x64, 0x03, 0xF3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+  // 38-byte SET frame aligned with reference implementations:
+  // len=0x20, byte5=0x03, byte6=0x01, byte13=0x01
+  uint8_t set_cmd_base[38] = {
+      0xBB, 0x00, 0x01, 0x03, 0x20, 0x03, 0x01, 0x64, 0x03, 0xF3,
+      0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
   get_cmd_resp_t m_get_cmd_resp = {0};
   set_cmd_t m_set_cmd = {0};
 
@@ -212,7 +219,6 @@ class TCLClimate : public climate::Climate, public uart::UARTDevice, public Poll
 
   void set_hswing_pos(const std::string &hswing_pos);
   void set_vswing_pos(const std::string &vswing_pos);
-  // Swing control methods
   void control_vertical_swing(const std::string &swing_mode);
   void control_horizontal_swing(const std::string &swing_mode);
 
@@ -237,6 +243,23 @@ class TCLClimate : public climate::Climate, public uart::UARTDevice, public Poll
   int read_data_line(int readch, uint8_t *buffer, int len);
   bool is_valid_xor(uint8_t *buffer, int len);
   void print_hex_str(uint8_t *buffer, int len);
+
+  struct last_state_t {
+    uint8_t mode_raw = 0;
+    uint8_t temp_raw = 0;
+    uint8_t fan_raw = 0;
+    uint8_t preset_code = 0;  // 0=none, 1=eco, 2=sleep, 3=boost
+    bool valid = false;
+  } last_state_;
+
+  ESPPreferenceObject last_state_pref_;
+
+  void load_last_state_();
+  void save_last_state_(const get_cmd_resp_t &state);
+  void restore_last_state_(get_cmd_resp_t *state);
+  static climate::ClimateMode mode_from_raw_(uint8_t mode_raw);
+  static climate::ClimateFanMode fan_from_raw_(uint8_t fan_raw);
+  static climate::ClimatePreset preset_from_code_(uint8_t preset_code);
 };
 
 }  // namespace tcl_climate

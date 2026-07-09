@@ -25,7 +25,7 @@ captive_portal:
 
 logger:
   baud_rate: 0
-  level: VERBOSE
+  level: DEBUG
 
 api:
 
@@ -75,6 +75,8 @@ select:
       - "Fix lower"
       - "Fix bottom"
       - "Move full"
+      - "Move upper"
+      - "Move lower"
     lambda: |-
       return id(tcl_custom_climate).vswing_pos;
     set_action:

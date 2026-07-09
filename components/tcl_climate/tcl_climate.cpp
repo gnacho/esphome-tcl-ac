@@ -1,24 +1,21 @@
-//#ifdef USE_ARDUINO
+#ifdef USE_ARDUINO
 
 #include "esphome/core/log.h"
 #include "esphome/core/helpers.h"
+#include "esphome/core/preferences.h"
 #include "tcl_climate.h"
-#include <map>  // Add this include
+#include <map>
 
 namespace esphome {
 namespace tcl_climate {
 
-// Use constexpr for compile-time constants
 static constexpr uint8_t REQ_CMD[] = {0xBB, 0x00, 0x01, 0x04, 0x02, 0x01, 0x00, 0xBD};
 static constexpr int MAX_LINE_LENGTH = 100;
 static constexpr int UPDATE_INTERVAL_MS = 450;
 
 void TCLClimate::set_current_temperature(float current_temperature) {
   if (std::abs(this->current_temperature - current_temperature) < 0.1f) return;
-
-  // Log current temperature change
   ESP_LOGD("TCL", "Current temperature updated to: %.1f°C", current_temperature);
-
   this->is_changed = true;
   this->current_temperature = current_temperature;
 }
@@ -28,17 +25,13 @@ void TCLClimate::set_custom_fan_mode(StringRef fan_mode) {
   if (!current.empty() && fan_mode == current.c_str()) {
     return;
   }
-
-  // Log the fan mode change
   ESP_LOGI("TCL", "Fan mode changed to: %s", fan_mode.c_str());
   this->is_changed = true;
-
   this->set_custom_fan_mode_(fan_mode.c_str());
 }
 
 void TCLClimate::set_mode(climate::ClimateMode mode) {
   if (this->mode == mode) return;
-  // Log the mode change
   const char* mode_str = "";
   switch (mode) {
     case climate::CLIMATE_MODE_OFF: mode_str = "OFF"; break;
@@ -56,7 +49,6 @@ void TCLClimate::set_mode(climate::ClimateMode mode) {
 
 void TCLClimate::set_swing_mode(climate::ClimateSwingMode swing_mode) {
   if (this->swing_mode == swing_mode) return;
-
   const char* swing_str = "";
   switch (swing_mode) {
     case climate::CLIMATE_SWING_OFF: swing_str = "OFF"; break;
@@ -78,24 +70,108 @@ void TCLClimate::set_hswing_pos(const std::string &hswing_pos) {
 
 void TCLClimate::set_vswing_pos(const std::string &vswing_pos) {
   if (this->vswing_pos == vswing_pos) return;
-
   ESP_LOGI("TCL", "Vertical swing position: %s", vswing_pos.c_str());
   this->vswing_pos = vswing_pos;
 }
 
 void TCLClimate::set_target_temperature(float target_temperature) {
   if (std::abs(this->target_temperature - target_temperature) < 0.1f) return;
-  // Log temperature change
   ESP_LOGI("TCL", "Target temperature changed to: %.1f°C", target_temperature);
-
   this->is_changed = true;
   this->target_temperature = target_temperature;
+}
+
+climate::ClimateMode TCLClimate::mode_from_raw_(uint8_t mode_raw) {
+  switch (mode_raw) {
+    case 0x01: return climate::CLIMATE_MODE_COOL;
+    case 0x02: return climate::CLIMATE_MODE_FAN_ONLY;
+    case 0x03: return climate::CLIMATE_MODE_DRY;
+    case 0x04: return climate::CLIMATE_MODE_HEAT;
+    case 0x05: return climate::CLIMATE_MODE_AUTO;
+    default: return climate::CLIMATE_MODE_COOL;
+  }
+}
+
+climate::ClimateFanMode TCLClimate::fan_from_raw_(uint8_t fan_raw) {
+  switch (fan_raw) {
+    case 0x01: return climate::CLIMATE_FAN_LOW;
+    case 0x02: return climate::CLIMATE_FAN_MEDIUM;
+    case 0x03: return climate::CLIMATE_FAN_HIGH;
+    default: return climate::CLIMATE_FAN_AUTO;
+  }
+}
+
+climate::ClimatePreset TCLClimate::preset_from_code_(uint8_t preset_code) {
+  switch (preset_code) {
+    case 1: return climate::CLIMATE_PRESET_ECO;
+    case 2: return climate::CLIMATE_PRESET_SLEEP;
+    case 3: return climate::CLIMATE_PRESET_BOOST;
+    default: return climate::CLIMATE_PRESET_NONE;
+  }
+}
+
+void TCLClimate::load_last_state_() {
+  this->last_state_pref_ = global_preferences->make_preference<uint32_t>(0xB105F00D);
+  uint32_t encoded = 0;
+  if (this->last_state_pref_.load(&encoded)) {
+    last_state_.valid = (encoded & 0x80000000UL) != 0;
+    last_state_.mode_raw = encoded & 0xFF;
+    last_state_.temp_raw = (encoded >> 8) & 0xFF;
+    last_state_.fan_raw = (encoded >> 16) & 0xFF;
+    last_state_.preset_code = (encoded >> 24) & 0x7F;
+    if (last_state_.mode_raw == 0 || last_state_.mode_raw > 0x05) last_state_.valid = false;
+    if (last_state_.preset_code > 3) last_state_.valid = false;
+  } else {
+    last_state_.valid = false;
+  }
+}
+
+void TCLClimate::save_last_state_(const get_cmd_resp_t &state) {
+  last_state_.mode_raw = state.data.mode;
+  last_state_.temp_raw = state.data.temp;
+  last_state_.fan_raw = state.data.fan;
+  if (this->preset.has_value() && this->preset.value() == climate::CLIMATE_PRESET_ECO) {
+    last_state_.preset_code = 1;
+  } else if (sleep_mode_ != 0x00) {
+    last_state_.preset_code = 2;
+  } else if (this->preset.has_value() && this->preset.value() == climate::CLIMATE_PRESET_BOOST) {
+    last_state_.preset_code = 3;
+  } else {
+    last_state_.preset_code = 0;
+  }
+  last_state_.valid = true;
+  uint32_t encoded = (static_cast<uint32_t>(last_state_.mode_raw) & 0xFF) |
+                     ((static_cast<uint32_t>(last_state_.temp_raw) & 0xFF) << 8) |
+                     ((static_cast<uint32_t>(last_state_.fan_raw) & 0xFF) << 16) |
+                     ((static_cast<uint32_t>(last_state_.preset_code) & 0x7F) << 24) |
+                     0x80000000UL;
+  this->last_state_pref_.save(&encoded);
+  ESP_LOGI("TCL", "Saved last active state: mode_raw=0x%02X temp_raw=%u fan_raw=%u preset=%u",
+           last_state_.mode_raw, last_state_.temp_raw, last_state_.fan_raw, last_state_.preset_code);
+}
+
+void TCLClimate::restore_last_state_(get_cmd_resp_t *state) {
+  if (!last_state_.valid) return;
+  state->data.mode = last_state_.mode_raw;
+  state->data.temp = last_state_.temp_raw;
+  state->data.fan = last_state_.fan_raw;
+  state->data.eco = (last_state_.preset_code == 1);
+  state->data.turbo = (last_state_.preset_code == 3);
+  sleep_mode_ = (last_state_.preset_code == 2) ? 0x01 : 0x00;
+
+  this->mode = mode_from_raw_(last_state_.mode_raw);
+  this->target_temperature = static_cast<float>(last_state_.temp_raw + 16);
+  this->fan_mode = fan_from_raw_(last_state_.fan_raw);
+  this->preset = preset_from_code_(last_state_.preset_code);
+  this->is_changed = true;
+  ESP_LOGI("TCL", "Restored last active state: mode=%d temp=%.0f fan=%d preset=%d",
+           static_cast<int>(this->mode), this->target_temperature,
+           static_cast<int>(this->fan_mode.value_or(climate::CLIMATE_FAN_AUTO)), last_state_.preset_code);
 }
 
 void TCLClimate::build_set_cmd(get_cmd_resp_t *get_cmd_resp) {
     memcpy(m_set_cmd.raw, set_cmd_base, sizeof(m_set_cmd.raw));
 
-    // Manual assignment instead of struct initialization
     m_set_cmd.data.power = get_cmd_resp->data.power;
     m_set_cmd.data.off_timer_en = 0;
     m_set_cmd.data.on_timer_en = 0;
@@ -106,38 +182,36 @@ void TCLClimate::build_set_cmd(get_cmd_resp_t *get_cmd_resp) {
     m_set_cmd.data.mute = get_cmd_resp->data.mute;
     m_set_cmd.data.sleep_mode = sleep_mode_;
 
-    // Mode mapping using lookup table
+    // Map internal raw mode -> command mode byte, aligned with the reference
+    // TCL protocol (cool=0x03, dry=0x02, fan=0x07, heat=0x01, auto=0x08).
     static constexpr uint8_t MODE_MAP[] = {
-        0x00, // 0x00 - unused
-        0x03, // 0x01 -> 0x03
-        0x02, // 0x02 -> 0x02 (fan only)
-        0x07, // 0x03 -> 0x07 (dry)
-        0x01, // 0x04 -> 0x01 (heat)
-        0x08  // 0x05 -> 0x08 (auto)
+        0x00,  // 0 (unused)
+        0x03,  // COOL
+        0x07,  // FAN_ONLY
+        0x02,  // DRY
+        0x01,  // HEAT
+        0x08   // AUTO
     };
 
     if (get_cmd_resp->data.mode < sizeof(MODE_MAP)) {
         m_set_cmd.data.mode = MODE_MAP[get_cmd_resp->data.mode];
     }
 
-    // Temperature conversion
     m_set_cmd.data.temp = 15 - get_cmd_resp->data.temp;
 
-    // Fan mode mapping using lookup table
     static constexpr uint8_t FAN_MAP[] = {
-        0x00, // 0x00 -> 0x00 (auto)
-        0x02, // 0x01 -> 0x02 (speed 1)
-        0x03, // 0x02 -> 0x03 (speed 3)
-        0x05, // 0x03 -> 0x05 (speed 5)
-        0x06, // 0x04 -> 0x06 (speed 2)
-        0x07  // 0x05 -> 0x07 (speed 4)
+        0x00,
+        0x02,
+        0x03,
+        0x05,
+        0x06,
+        0x07
     };
 
     if (get_cmd_resp->data.fan < sizeof(FAN_MAP)) {
         m_set_cmd.data.fan = FAN_MAP[get_cmd_resp->data.fan];
     }
 
-    // Swing control - extracted from old code
     if (get_cmd_resp->data.vswing_mv) {
       m_set_cmd.data.vswing = 0x07;
       m_set_cmd.data.vswing_fix = 0;
@@ -160,7 +234,6 @@ void TCLClimate::build_set_cmd(get_cmd_resp_t *get_cmd_resp) {
 
     m_set_cmd.data.half_degree = 0;
 
-    // Calculate XOR checksum
     uint8_t xor_byte = 0;
     for (size_t i = 0; i < sizeof(m_set_cmd.raw) - 1; i++) {
         xor_byte ^= m_set_cmd.raw[i];
@@ -170,11 +243,10 @@ void TCLClimate::build_set_cmd(get_cmd_resp_t *get_cmd_resp) {
 
 void TCLClimate::setup() {
   set_update_interval(UPDATE_INTERVAL_MS);
+  load_last_state_();
 }
 
-// Swing control methods from old code
 void TCLClimate::control_vertical_swing(const std::string &swing_mode) {
-
   get_cmd_resp_t get_cmd_resp = {0};
   memcpy(get_cmd_resp.raw, m_get_cmd_resp.raw, sizeof(get_cmd_resp.raw));
 
@@ -198,7 +270,6 @@ void TCLClimate::control_vertical_swing(const std::string &swing_mode) {
 }
 
 void TCLClimate::control_horizontal_swing(const std::string &swing_mode) {
-
   get_cmd_resp_t get_cmd_resp = {0};
   memcpy(get_cmd_resp.raw, m_get_cmd_resp.raw, sizeof(get_cmd_resp.raw));
 
@@ -226,7 +297,7 @@ void TCLClimate::set_mute(bool mute) {
   get_cmd_resp_t gcr = {0};
   memcpy(gcr.raw, m_get_cmd_resp.raw, sizeof(gcr.raw));
   if (mute) {
-    gcr.data.fan = 0x01;   // low speed
+    gcr.data.fan = 0x01;
     gcr.data.mute = 0x01;
   } else {
     gcr.data.mute = 0x00;
@@ -240,14 +311,13 @@ void TCLClimate::set_beep(bool beep) {
   memcpy(gcr.raw, m_get_cmd_resp.raw, sizeof(gcr.raw));
   build_set_cmd(&gcr);
 
-  uint8_t mask = 0x20;  // bit 5 in byte 7
+  uint8_t mask = 0x20;
   if (beep) {
     m_set_cmd.raw[7] |= mask;
   } else {
     m_set_cmd.raw[7] &= ~mask;
   }
 
-  // Recalculate XOR checksum
   uint8_t xor_byte = 0;
   for (size_t i = 0; i < sizeof(m_set_cmd.raw) - 1; i++) {
     xor_byte ^= m_set_cmd.raw[i];
@@ -263,23 +333,32 @@ void TCLClimate::control(const climate::ClimateCall &call) {
     get_cmd_resp_t get_cmd_resp = {0};
     memcpy(get_cmd_resp.raw, m_get_cmd_resp.raw, sizeof(get_cmd_resp.raw));
     bool should_build_cmd = false;
+    bool restored = false;
 
     if (call.get_mode().has_value()) {
         climate::ClimateMode climate_mode = *call.get_mode();
         ESP_LOGI("TCL", "Received mode control command: %d", static_cast<int>(climate_mode));
 
         if (climate_mode == climate::CLIMATE_MODE_OFF) {
+            if (this->mode != climate::CLIMATE_MODE_OFF) {
+                save_last_state_(get_cmd_resp);
+            }
             get_cmd_resp.data.power = 0x00;
         } else {
             get_cmd_resp.data.power = 0x01;
-            switch (climate_mode) {
-                case climate::CLIMATE_MODE_COOL:    get_cmd_resp.data.mode = 0x01; break;
-                case climate::CLIMATE_MODE_DRY:     get_cmd_resp.data.mode = 0x03; break;
-                case climate::CLIMATE_MODE_FAN_ONLY:get_cmd_resp.data.mode = 0x02; break;
-                case climate::CLIMATE_MODE_HEAT:
-                case climate::CLIMATE_MODE_HEAT_COOL:get_cmd_resp.data.mode = 0x04; break;
-                case climate::CLIMATE_MODE_AUTO:    get_cmd_resp.data.mode = 0x05; break;
-                default: break;
+            if ((this->mode == climate::CLIMATE_MODE_OFF || m_get_cmd_resp.data.power == 0x00) && last_state_.valid) {
+                restore_last_state_(&get_cmd_resp);
+                restored = true;
+            } else {
+                switch (climate_mode) {
+                    case climate::CLIMATE_MODE_COOL:    get_cmd_resp.data.mode = 0x01; break;
+                    case climate::CLIMATE_MODE_DRY:     get_cmd_resp.data.mode = 0x03; break;
+                    case climate::CLIMATE_MODE_FAN_ONLY:get_cmd_resp.data.mode = 0x02; break;
+                    case climate::CLIMATE_MODE_HEAT:
+                    case climate::CLIMATE_MODE_HEAT_COOL:get_cmd_resp.data.mode = 0x04; break;
+                    case climate::CLIMATE_MODE_AUTO:    get_cmd_resp.data.mode = 0x05; break;
+                    default: break;
+                }
             }
         }
         should_build_cmd = true;
@@ -301,24 +380,18 @@ void TCLClimate::control(const climate::ClimateCall &call) {
         } else if (preset == climate::CLIMATE_PRESET_BOOST) {
             get_cmd_resp.data.turbo = 1;
         }
-        // When selecting a preset, remove Silencio fan mode override
         should_build_cmd = true;
     }
-
-    // Mute/Silencio is handled via custom fan mode (ESPHome 2026.5.1 does not expose custom_preset setter)
-
 
     if (call.get_target_temperature().has_value()) {
         float temp = *call.get_target_temperature();
         ESP_LOGI("TCL", "Received temperature control command: %.1f°C", temp);
-
         get_cmd_resp.data.temp = static_cast<uint8_t>(temp) - 16;
         should_build_cmd = true;
     }
 
     if (call.get_swing_mode().has_value()) {
         climate::ClimateSwingMode swing_mode = *call.get_swing_mode();
-
         switch(swing_mode) {
             case climate::CLIMATE_SWING_OFF:
                 get_cmd_resp.data.hswing = 0;
@@ -340,7 +413,6 @@ void TCLClimate::control(const climate::ClimateCall &call) {
         should_build_cmd = true;
     }
 
-    // Standard fan mode handling (Auto / Low / Medium / High)
     if (call.get_fan_mode().has_value()) {
         climate::ClimateFanMode fan = *call.get_fan_mode();
         ESP_LOGI("TCL", "Received standard fan mode control command: %d", static_cast<int>(fan));
@@ -355,13 +427,12 @@ void TCLClimate::control(const climate::ClimateCall &call) {
         should_build_cmd = true;
     }
 
-    // Custom fan mode handling (Silencio)
     StringRef custom_fan_mode(call.get_custom_fan_mode());
     if (!custom_fan_mode.empty()) {
         std::string fan_mode(custom_fan_mode.c_str());
         ESP_LOGI("TCL", "Received custom fan mode control command: %s", fan_mode.c_str());
         if (fan_mode == "Silencio") {
-            get_cmd_resp.data.fan = 0x01;  // low speed
+            get_cmd_resp.data.fan = 0x01;
             get_cmd_resp.data.mute = 0x01;
         }
         should_build_cmd = true;
@@ -369,9 +440,11 @@ void TCLClimate::control(const climate::ClimateCall &call) {
 
     if (should_build_cmd) {
         ESP_LOGI("TCL", "Building and sending command to AC unit");
-
         build_set_cmd(&get_cmd_resp);
         ready_to_send_set_cmd_flag = true;
+        if (restored) {
+            this->publish_state();
+        }
     }
 }
 
@@ -413,6 +486,7 @@ climate::ClimateTraits TCLClimate::traits() {
 void TCLClimate::update() {
     if (ready_to_send_set_cmd_flag) {
         ready_to_send_set_cmd_flag = false;
+        ESP_LOGD("TCL", "Sending SET: %s", format_hex_pretty(m_set_cmd.raw, sizeof(m_set_cmd.raw)).c_str());
         write_array(m_set_cmd.raw, sizeof(m_set_cmd.raw));
     } else {
         write_array(REQ_CMD, sizeof(REQ_CMD));
@@ -428,12 +502,12 @@ int TCLClimate::read_data_line(int readch, uint8_t *buffer, int len) {
 
     if (readch == 0xBB && skipch == 0 && !wait_len) {
         pos = 0;
-        skipch = 3; // wait for length byte
+        skipch = 3;
         wait_len = true;
         if (pos < len) buffer[pos++] = static_cast<uint8_t>(readch);
     } else if (skipch == 0 && wait_len) {
         if (pos < len) buffer[pos++] = static_cast<uint8_t>(readch);
-        skipch = readch + 1; // +1 for checksum
+        skipch = readch + 1;
         wait_len = false;
     } else if (skipch > 0) {
         if (pos < len) buffer[pos++] = static_cast<uint8_t>(readch);
@@ -445,7 +519,6 @@ int TCLClimate::read_data_line(int readch, uint8_t *buffer, int len) {
 
 bool TCLClimate::is_valid_xor(uint8_t *buffer, int len) {
     if (len < 1) return false;
-
     uint8_t xor_byte = 0;
     for (int i = 0; i < len - 1; i++) {
         xor_byte ^= buffer[i];
@@ -455,14 +528,11 @@ bool TCLClimate::is_valid_xor(uint8_t *buffer, int len) {
 
 void TCLClimate::print_hex_str(uint8_t *buffer, int len) {
     if (len <= 0) return;
-
     char str[MAX_LINE_LENGTH * 3] = {0};
     char *pstr = str;
-
     for (int i = 0; i < len && (pstr - str) < sizeof(str) - 3; i++) {
         pstr += sprintf(pstr, "%02X ", buffer[i]);
     }
-
     ESP_LOGD("TCL", "Received: %s", str);
 }
 
@@ -477,11 +547,9 @@ void TCLClimate::loop() {
             if (is_valid_xor(buffer, len)) {
                 print_hex_str(buffer, len);
 
-                // Calculate current temperature
                 float curr_temp = ((static_cast<uint16_t>(buffer[17] << 8) | buffer[18]) / 374.0f - 32.0f) / 1.8f;
                 this->is_changed = false;
 
-                // Set mode
                 if (m_get_cmd_resp.data.power == 0x00) {
                     this->set_mode(climate::CLIMATE_MODE_OFF);
                 } else {
@@ -498,7 +566,6 @@ void TCLClimate::loop() {
                     }
                 }
 
-                // Set fan mode
                 if (m_get_cmd_resp.data.mute) {
                   StringRef current_cfan(StringRef(this->get_custom_fan_mode()));
                   if (current_cfan.empty() || current_cfan != "Mute") {
@@ -518,7 +585,6 @@ void TCLClimate::loop() {
                   }
                 }
 
-                // Set swing mode - extracted from old code
                 if (m_get_cmd_resp.data.hswing && m_get_cmd_resp.data.vswing) {
                     this->set_swing_mode(climate::CLIMATE_SWING_BOTH);
                 } else if (!m_get_cmd_resp.data.hswing && !m_get_cmd_resp.data.vswing) {
@@ -529,15 +595,21 @@ void TCLClimate::loop() {
                     this->set_swing_mode(climate::CLIMATE_SWING_HORIZONTAL);
                 }
 
-                // Set swing positions - extracted from old code
-                if (m_get_cmd_resp.data.vswing_mv == 0x01) set_vswing_pos("Move full");
-                else if (m_get_cmd_resp.data.vswing_mv == 0x02) set_vswing_pos("Move upper");
-                else if (m_get_cmd_resp.data.vswing_mv == 0x03) set_vswing_pos("Move lower");
-                else if (m_get_cmd_resp.data.vswing_fix == 0x01) set_vswing_pos("Fix top");
-                else if (m_get_cmd_resp.data.vswing_fix == 0x02) set_vswing_pos("Fix upper");
-                else if (m_get_cmd_resp.data.vswing_fix == 0x03) set_vswing_pos("Fix mid");
-                else if (m_get_cmd_resp.data.vswing_fix == 0x04) set_vswing_pos("Fix lower");
-                else if (m_get_cmd_resp.data.vswing_fix == 0x05) set_vswing_pos("Fix bottom");
+                // When the AC is not actively reporting a move/fix position it returns
+                // 0xFF in these bytes, which the bitfield reads as mv=0x03/fix=0x07.
+                // Treat that sentinel as "no specific position reported".
+                uint8_t vswing_mv = m_get_cmd_resp.data.vswing_mv;
+                uint8_t vswing_fix = m_get_cmd_resp.data.vswing_fix;
+                if (vswing_mv == 0x03 && vswing_fix == 0x07) {
+                  set_vswing_pos("Last position");
+                } else if (vswing_mv == 0x01) set_vswing_pos("Move full");
+                else if (vswing_mv == 0x02) set_vswing_pos("Move upper");
+                else if (vswing_mv == 0x03) set_vswing_pos("Move lower");
+                else if (vswing_fix == 0x01) set_vswing_pos("Fix top");
+                else if (vswing_fix == 0x02) set_vswing_pos("Fix upper");
+                else if (vswing_fix == 0x03) set_vswing_pos("Fix mid");
+                else if (vswing_fix == 0x04) set_vswing_pos("Fix lower");
+                else if (vswing_fix == 0x05) set_vswing_pos("Fix bottom");
                 else set_vswing_pos("Last position");
 
                 if (m_get_cmd_resp.data.hswing_mv == 0x01) set_hswing_pos("Move full");
@@ -551,7 +623,6 @@ void TCLClimate::loop() {
                 else if (m_get_cmd_resp.data.hswing_fix == 0x05) set_hswing_pos("Fix right");
                 else set_hswing_pos("Last position");
 
-                // Preset state (Eco / Sleep / Boost)
                 climate::ClimatePreset prev_preset = this->preset.value_or(climate::CLIMATE_PRESET_NONE);
                 this->eco_ = m_get_cmd_resp.data.eco;
                 if (this->eco_) {
@@ -586,4 +657,4 @@ void TCLClimate::loop() {
 
 }  // namespace tcl_climate
 }  // namespace esphome
-//#endif  // USE_ARDUINO
+#endif  // USE_ARDUINO

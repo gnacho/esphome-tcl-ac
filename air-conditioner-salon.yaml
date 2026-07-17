@@ -46,8 +46,10 @@ climate:
     name: "Aire Salon"
     icon: "mdi:fan"
 
-# Nota: este modelo no tiene oscilacion horizontal motorizada.
-# El ajuste horizontal es manual (fisico). Solo se expone swing vertical.
+# Nota: swing vertical y horizontal son motorizados y se controlan por UART.
+# Byte 10 del status: bit6 = vertical on/off, bit5 = horizontal on/off.
+# Este modelo NO reporta posiciones (bytes 51/52 siempre 0xFF), el mando
+# fisico solo alterna on/off por eje. Las opciones Fix/Move son experimentales.
 # Humedad y consumo electrico NO estan disponibles por UART en este modelo.
 
 switch:
@@ -83,6 +85,28 @@ select:
       then:
         - lambda: |-
             id(tcl_custom_climate).control_vertical_swing(x);
+
+  - platform: template
+    name: "Swing Horizontal"
+    id: hswing
+    entity_category: config
+    options:
+      - "Last position"
+      - "Fix left"
+      - "Fix mid left"
+      - "Fix mid"
+      - "Fix mid right"
+      - "Fix right"
+      - "Move full"
+      - "Move left"
+      - "Move mid"
+      - "Move right"
+    lambda: |-
+      return id(tcl_custom_climate).hswing_pos;
+    set_action:
+      then:
+        - lambda: |-
+            id(tcl_custom_climate).control_horizontal_swing(x);
 
 sensor:
   - platform: template

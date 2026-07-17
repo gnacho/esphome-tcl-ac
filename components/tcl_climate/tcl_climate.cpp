@@ -212,28 +212,26 @@ void TCLClimate::build_set_cmd(get_cmd_resp_t *get_cmd_resp) {
         m_set_cmd.data.fan = FAN_MAP[get_cmd_resp->data.fan];
     }
 
-    if (get_cmd_resp->data.vswing_mv) {
-      m_set_cmd.data.vswing = 0x07;
-      m_set_cmd.data.vswing_fix = 0;
-      m_set_cmd.data.vswing_mv = get_cmd_resp->data.vswing_mv;
-    } else if (get_cmd_resp->data.vswing_fix) {
-      m_set_cmd.data.vswing = 0;
-      m_set_cmd.data.vswing_fix = get_cmd_resp->data.vswing_fix;
-      m_set_cmd.data.vswing_mv = 0;
-    }
-
-    if (get_cmd_resp->data.hswing_mv) {
-      m_set_cmd.data.hswing = 0x01;
-      m_set_cmd.data.hswing_fix = 0;
-      m_set_cmd.data.hswing_mv = get_cmd_resp->data.hswing_mv;
-    } else if (get_cmd_resp->data.hswing_fix) {
-      m_set_cmd.data.hswing = 0;
-      m_set_cmd.data.hswing_fix = get_cmd_resp->data.hswing_fix;
-      m_set_cmd.data.hswing_mv = 0;
-    }
+    // Swing on/off: the GET response reports vertical in byte10 bit6 and
+    // horizontal in byte10 bit5 (confirmed by sniffing the UART bus while
+    // toggling the physical remote, 17-Jul-2026). The SET frame carries
+    // vertical in byte10 bits3-5 (0x07 = on) and horizontal in byte11 bit3.
+    // This unit never reports fix/move positions (bytes 51/52 stay 0xFF),
+    // so plain on/off is the correct mapping for normal commands. Explicit
+    // position commands from the selects override these fields afterwards.
+    m_set_cmd.data.vswing = get_cmd_resp->data.vswing ? 0x07 : 0x00;
+    m_set_cmd.data.vswing_fix = 0;
+    m_set_cmd.data.vswing_mv = 0;
+    m_set_cmd.data.hswing = get_cmd_resp->data.hswing ? 0x01 : 0x00;
+    m_set_cmd.data.hswing_fix = 0;
+    m_set_cmd.data.hswing_mv = 0;
 
     m_set_cmd.data.half_degree = 0;
 
+    finalize_set_cmd_();
+}
+
+void TCLClimate::finalize_set_cmd_() {
     uint8_t xor_byte = 0;
     for (size_t i = 0; i < sizeof(m_set_cmd.raw) - 1; i++) {
         xor_byte ^= m_set_cmd.raw[i];
@@ -250,22 +248,22 @@ void TCLClimate::control_vertical_swing(const std::string &swing_mode) {
   get_cmd_resp_t get_cmd_resp = {0};
   memcpy(get_cmd_resp.raw, m_get_cmd_resp.raw, sizeof(get_cmd_resp.raw));
 
-  get_cmd_resp.data.vswing_mv = 0;
-  get_cmd_resp.data.vswing_fix = 0;
-
-  if (swing_mode == "Move full") get_cmd_resp.data.vswing_mv = 0x01;
-  else if (swing_mode == "Move upper")  get_cmd_resp.data.vswing_mv = 0x02;
-  else if (swing_mode == "Move lower")  get_cmd_resp.data.vswing_mv = 0x03;
-  else if (swing_mode == "Fix top") get_cmd_resp.data.vswing_fix = 0x01;
-  else if (swing_mode == "Fix upper") get_cmd_resp.data.vswing_fix = 0x02;
-  else if (swing_mode == "Fix mid") get_cmd_resp.data.vswing_fix = 0x03;
-  else if (swing_mode == "Fix lower") get_cmd_resp.data.vswing_fix = 0x04;
-  else if (swing_mode == "Fix bottom") get_cmd_resp.data.vswing_fix = 0x05;
-
-  if (get_cmd_resp.data.vswing_mv) get_cmd_resp.data.vswing = 0x01;
-  else get_cmd_resp.data.vswing = 0;
-
   build_set_cmd(&get_cmd_resp);
+
+  uint8_t vswing = 0, fix = 0, mv = 0;
+  if (swing_mode == "Move full") { vswing = 0x07; mv = 0x01; }
+  else if (swing_mode == "Move upper") { vswing = 0x07; mv = 0x02; }
+  else if (swing_mode == "Move lower") { vswing = 0x07; mv = 0x03; }
+  else if (swing_mode == "Fix top") { fix = 0x01; }
+  else if (swing_mode == "Fix upper") { fix = 0x02; }
+  else if (swing_mode == "Fix mid") { fix = 0x03; }
+  else if (swing_mode == "Fix lower") { fix = 0x04; }
+  else if (swing_mode == "Fix bottom") { fix = 0x05; }
+
+  m_set_cmd.data.vswing = vswing;
+  m_set_cmd.data.vswing_fix = fix;
+  m_set_cmd.data.vswing_mv = mv;
+  finalize_set_cmd_();
   ready_to_send_set_cmd_flag = true;
 }
 
@@ -273,23 +271,23 @@ void TCLClimate::control_horizontal_swing(const std::string &swing_mode) {
   get_cmd_resp_t get_cmd_resp = {0};
   memcpy(get_cmd_resp.raw, m_get_cmd_resp.raw, sizeof(get_cmd_resp.raw));
 
-  get_cmd_resp.data.hswing_mv = 0;
-  get_cmd_resp.data.hswing_fix = 0;
-
-  if (swing_mode == "Move full") get_cmd_resp.data.hswing_mv = 0x01;
-  else if (swing_mode == "Move left") get_cmd_resp.data.hswing_mv = 0x02;
-  else if (swing_mode == "Move mid") get_cmd_resp.data.hswing_mv = 0x03;
-  else if (swing_mode == "Move right") get_cmd_resp.data.hswing_mv = 0x04;
-  else if (swing_mode == "Fix left") get_cmd_resp.data.hswing_fix = 0x01;
-  else if (swing_mode == "Fix mid left") get_cmd_resp.data.hswing_fix = 0x02;
-  else if (swing_mode == "Fix mid") get_cmd_resp.data.hswing_fix = 0x03;
-  else if (swing_mode == "Fix mid right") get_cmd_resp.data.hswing_fix = 0x04;
-  else if (swing_mode == "Fix right") get_cmd_resp.data.hswing_fix = 0x05;
-
-  if (get_cmd_resp.data.hswing_mv) get_cmd_resp.data.hswing = 0x01;
-  else get_cmd_resp.data.hswing = 0;
-
   build_set_cmd(&get_cmd_resp);
+
+  uint8_t hswing = 0, fix = 0, mv = 0;
+  if (swing_mode == "Move full") { hswing = 0x01; mv = 0x01; }
+  else if (swing_mode == "Move left") { hswing = 0x01; mv = 0x02; }
+  else if (swing_mode == "Move mid") { hswing = 0x01; mv = 0x03; }
+  else if (swing_mode == "Move right") { hswing = 0x01; mv = 0x04; }
+  else if (swing_mode == "Fix left") { fix = 0x01; }
+  else if (swing_mode == "Fix mid left") { fix = 0x02; }
+  else if (swing_mode == "Fix mid") { fix = 0x03; }
+  else if (swing_mode == "Fix mid right") { fix = 0x04; }
+  else if (swing_mode == "Fix right") { fix = 0x05; }
+
+  m_set_cmd.data.hswing = hswing;
+  m_set_cmd.data.hswing_fix = fix;
+  m_set_cmd.data.hswing_mv = mv;
+  finalize_set_cmd_();
   ready_to_send_set_cmd_flag = true;
 }
 
@@ -318,11 +316,7 @@ void TCLClimate::set_beep(bool beep) {
     m_set_cmd.raw[7] &= ~mask;
   }
 
-  uint8_t xor_byte = 0;
-  for (size_t i = 0; i < sizeof(m_set_cmd.raw) - 1; i++) {
-    xor_byte ^= m_set_cmd.raw[i];
-  }
-  m_set_cmd.raw[sizeof(m_set_cmd.raw) - 1] = xor_byte;
+  finalize_set_cmd_();
 
   ready_to_send_set_cmd_flag = true;
   beep_ = beep;

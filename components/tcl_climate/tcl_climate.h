@@ -239,10 +239,11 @@ class TCLClimate : public climate::Climate, public uart::UARTDevice, public Poll
   void update() override;
   void loop() override;
 
- private:
-  int read_data_line(int readch, uint8_t *buffer, int len);
-  bool is_valid_xor(uint8_t *buffer, int len);
-  void print_hex_str(uint8_t *buffer, int len);
+  private:
+   int read_data_line(int readch, uint8_t *buffer, int len);
+   bool is_valid_xor(uint8_t *buffer, int len);
+   void print_hex_str(uint8_t *buffer, int len);
+   void finalize_set_cmd_();
 
   struct last_state_t {
     uint8_t mode_raw = 0;

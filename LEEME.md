@@ -17,7 +17,7 @@ Las modificaciones principales respecto al original:
 - Presets mapeados a los estándar de ESPHome: `ECO`, `SLEEP`, `BOOST` (Turbo).
 - Ventilador expuesto con modos estándar (`Auto / Low / Medium / High`) para compatibilidad nativa con iconos de Home Assistant.
 - **Silencio (Mute)** expuesto como switch template porque ESPHome no expone setter público para presets custom en componentes externos.
-- Swing horizontal comentado en YAML (el modelo JN52N no tiene motorizado horizontal).
+- Swing vertical **y horizontal** motorizados (on/off por eje), mapeados esnifando el bus UART mientras se pulsaba el mando físico.
 
 ## Características
 
@@ -25,7 +25,7 @@ Las modificaciones principales respecto al original:
 - **Presets**: Eco, Sleep, Boost (Turbo)
 - **Ventilador**: Auto / Bajo / Medio / Alto
 - **Silencio (Mute)**: switch independiente (baja velocidad + mute)
-- **Swing vertical**: 7 posiciones (incluyendo oscilación completa)
+- **Swing vertical y horizontal**: on/off por eje desde la tarjeta climate; selects con posiciones Fix/Move (experimentales — la unidad no reporta posiciones)
 - **Temperatura**: 16–30 °C
 - **Paridad UART EVEN** (requerido por el protocolo TCL)
 
@@ -67,7 +67,7 @@ Las modificaciones principales respecto al original:
 - **Sleep**: byte 19 bits 6:7 (`0x01` = Default).
 - **Turbo/Boost**: bit separado en byte 8 bit 6.
 - **Mute/Silencio**: bit separado en el protocolo; se expone como switch template porque ESPHome no permite `custom_preset` desde componentes custom externos.
-- **Swing horizontal**: en el modelo JN52N es ajuste manual/físico, no motorizado. No se expone en el YAML.
+- **Swing**: byte 10 del estado: bit 6 = vertical on/off, bit 5 = horizontal on/off (descubierto esnifando el UART con el mando físico). En el frame SET: vertical = byte 10 bits 3:5 (`0x07` = on), horizontal = byte 11 bit 3. La unidad no reporta posiciones de lamas (bytes 51/52 siempre `0xFF`).
 
 ## Licencia
 

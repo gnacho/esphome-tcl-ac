@@ -51,7 +51,7 @@ Main modifications from the original:
 
 ```text
 .
-├── air-conditioner-salon.yaml      # Main YAML (adjust secrets)
+├── ac-jn52n.yaml                   # Main YAML (adjust secrets)
 ├── components/
 │   └── tcl_climate/                # Custom ESPHome component
 │       ├── __init__.py
@@ -60,7 +60,7 @@ Main modifications from the original:
 │       └── tcl_climate.cpp
 ├── firmware/
 │   ├── JohnsonJN52N-original_firmware.bin  # Stock Tuya firmware dump (2 MiB)
-│   └── salon-aire-esphome.bin      # Precompiled ESPHome firmware
+│   └── ac-jn52n-esphome.bin        # Precompiled ESPHome firmware (no credentials baked in)
 └── images/                         # Hardware photos
 ```
 
@@ -90,27 +90,27 @@ esptool.py --port /dev/ttyUSB0 write_flash 0x0 firmware/JohnsonJN52N-original_fi
 
 ### Option A: precompiled firmware
 
-`firmware/salon-aire-esphome.bin` is ready to flash (same wiring and download mode as above):
+`firmware/ac-jn52n-esphome.bin` is ready to flash (same wiring and download mode as above):
 
 ```bash
-esptool.py --port /dev/ttyUSB0 write_flash 0x0 firmware/salon-aire-esphome.bin
+esptool.py --port /dev/ttyUSB0 write_flash 0x0 firmware/ac-jn52n-esphome.bin
 ```
 
-On first boot it will try the Wi-Fi credentials it was compiled with; if it can't connect, it falls back to its own AP with captive portal so you can reconfigure it.
+It is compiled **without any Wi-Fi credentials**, so on first boot it goes straight to its fallback AP with captive portal — connect to it and configure your own Wi-Fi from there.
 
 ### Option B: compile it yourself
 
 1. Copy the `components/tcl_climate/` folder next to your YAML.
-2. Copy `air-conditioner-salon.yaml` to your ESPHome directory.
-3. Edit WiFi secrets (`!secret ...`) and adjust `name` / `friendly_name` as desired.
+2. Copy `ac-jn52n.yaml` to your ESPHome directory.
+3. Define `wifi_ssid` and `wifi_password` in your `secrets.yaml` and adjust `name` / `friendly_name` as desired.
 4. Compile and flash:
    ```bash
-   esphome run air-conditioner-salon.yaml
+   esphome run ac-jn52n.yaml
    ```
 
 ## OTA updates
 
-The wired flash is only needed once. From then on, update over the air from the ESPHome dashboard or with `esphome run air-conditioner-salon.yaml`.
+The wired flash is only needed once. From then on, update over the air from the ESPHome dashboard or with `esphome run ac-jn52n.yaml`.
 
 ## Important notes
 

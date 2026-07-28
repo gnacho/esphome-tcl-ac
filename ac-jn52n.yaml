@@ -1,6 +1,6 @@
 esphome:
-  name: salon-aire
-  friendly_name: "AC Salon"
+  name: ac-jn52n
+  friendly_name: "Johnson JN52N AC"
 
 esp8266:
   board: esp01_1m
@@ -12,20 +12,17 @@ external_components:
     components: [tcl_climate]
 
 wifi:
-  ssid: !secret iot_wifi_ssid
-  password: !secret iot_wifi_password
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
   power_save_mode: none
   fast_connect: true
   min_auth_mode: WPA2
   ap:
-    ssid: "AC-Salon"
-    password: "slwf01pro"
 
 captive_portal:
 
 logger:
   baud_rate: 0
-  level: DEBUG
 
 api:
 
@@ -43,19 +40,19 @@ climate:
   - platform: tcl_climate
     id: tcl_custom_climate
     uart_id: uart_bus
-    name: "Aire Salon"
+    name: "Johnson JN52N"
     icon: "mdi:fan"
 
-# Nota: swing vertical y horizontal son motorizados y se controlan por UART.
-# Byte 10 del status: bit6 = vertical on/off, bit5 = horizontal on/off.
-# Este modelo NO reporta posiciones (bytes 51/52 siempre 0xFF), el mando
-# fisico solo alterna on/off por eje. Las opciones Fix/Move son experimentales.
-# Humedad y consumo electrico NO estan disponibles por UART en este modelo.
+# Note: vertical and horizontal swing are motorized and controlled over UART.
+# Status byte 10: bit6 = vertical on/off, bit5 = horizontal on/off.
+# This model does NOT report vane positions (bytes 51/52 always 0xFF); the
+# physical remote only toggles on/off per axis. Fix/Move options are experimental.
+# Humidity and power consumption are NOT available over UART on this model.
 
 switch:
   - platform: template
-    name: "Pitido"
-    id: pitido_switch
+    name: "Beep"
+    id: beep_switch
     icon: "mdi:bell"
     turn_on_action:
       - lambda: 'id(tcl_custom_climate).set_beep(true);'
@@ -66,7 +63,7 @@ switch:
 
 select:
   - platform: template
-    name: "Swing Vertical"
+    name: "Vertical Swing"
     id: vswing
     entity_category: config
     options:
@@ -87,7 +84,7 @@ select:
             id(tcl_custom_climate).control_vertical_swing(x);
 
   - platform: template
-    name: "Swing Horizontal"
+    name: "Horizontal Swing"
     id: hswing
     entity_category: config
     options:
@@ -110,8 +107,8 @@ select:
 
 sensor:
   - platform: template
-    name: "Temperatura Ambiente AC"
-    id: temp_ambiente_ac
+    name: "Ambient Temperature"
+    id: ambient_temp
     unit_of_measurement: "°C"
     accuracy_decimals: 1
     device_class: temperature

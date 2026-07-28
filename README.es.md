@@ -51,7 +51,7 @@ Las modificaciones principales respecto al original:
 
 ```text
 .
-├── air-conditioner-salon.yaml      # YAML principal (ajusta secrets)
+├── ac-jn52n.yaml                   # YAML principal (ajusta secrets)
 ├── components/
 │   └── tcl_climate/                # Componente custom ESPHome
 │       ├── __init__.py
@@ -60,7 +60,7 @@ Las modificaciones principales respecto al original:
 │       └── tcl_climate.cpp
 ├── firmware/
 │   ├── JohnsonJN52N-original_firmware.bin  # Volcado del firmware Tuya original (2 MiB)
-│   └── salon-aire-esphome.bin      # Firmware ESPHome precompilado
+│   └── ac-jn52n-esphome.bin        # Firmware ESPHome precompilado (sin credenciales)
 └── images/                         # Fotos del hardware
 ```
 
@@ -90,27 +90,27 @@ esptool.py --port /dev/ttyUSB0 write_flash 0x0 firmware/JohnsonJN52N-original_fi
 
 ### Opción A: firmware precompilado
 
-`firmware/salon-aire-esphome.bin` está listo para flashear (mismo cableado y modo download que arriba):
+`firmware/ac-jn52n-esphome.bin` está listo para flashear (mismo cableado y modo download que arriba):
 
 ```bash
-esptool.py --port /dev/ttyUSB0 write_flash 0x0 firmware/salon-aire-esphome.bin
+esptool.py --port /dev/ttyUSB0 write_flash 0x0 firmware/ac-jn52n-esphome.bin
 ```
 
-En el primer arranque intentará usar las credenciales WiFi con las que se compiló; si no consigue conectar, levanta un AP de respaldo con portal cautivo para que lo reconfigures.
+Está compilado **sin credenciales WiFi**, así que en el primer arranque levanta directamente su AP de respaldo con portal cautivo: conéctate a él y configura ahí tu propia WiFi.
 
 ### Opción B: compílalo tú mismo
 
 1. Copia la carpeta `components/tcl_climate/` junto a tu YAML.
-2. Copia `air-conditioner-salon.yaml` a tu directorio de ESPHome.
-3. Edita las claves WiFi (`!secret ...`) y ajusta `name` / `friendly_name` si lo deseas.
+2. Copia `ac-jn52n.yaml` a tu directorio de ESPHome.
+3. Define `wifi_ssid` y `wifi_password` en tu `secrets.yaml` y ajusta `name` / `friendly_name` si lo deseas.
 4. Compila y flashea:
    ```bash
-   esphome run air-conditioner-salon.yaml
+   esphome run ac-jn52n.yaml
    ```
 
 ## Actualizaciones OTA
 
-El flasheo por cable solo hace falta una vez. A partir de ahí, actualiza por WiFi desde el dashboard de ESPHome o con `esphome run air-conditioner-salon.yaml`.
+El flasheo por cable solo hace falta una vez. A partir de ahí, actualiza por WiFi desde el dashboard de ESPHome o con `esphome run ac-jn52n.yaml`.
 
 ## Notas importantes
 

@@ -10,6 +10,15 @@ ESPHome custom component + YAML para controlar aires acondicionados **Tuya** que
 
 *Ficha técnica del Johnson JN52N.*
 
+## Unidades compatibles conocidas
+
+| Unidad | Notas |
+|---|---|
+| Johnson JN52N (TYWE1S) | Unidad de referencia, protocolo mapeado por completo |
+| [Rovsun 20 SEER2](https://github.com/gnacho/esphome-tcl-ac/issues/1) | Reportado por [@mgn-norm](https://github.com/mgn-norm), funciona sin cambios |
+
+Son las unidades probadas por alguien (la de referencia y todos los reportes de las [issues](https://github.com/gnacho/esphome-tcl-ac/issues)). Cualquier otro aire Tuya cuya placa hable el protocolo TCL (cabecera `0xBB`, 9600 baudios, paridad EVEN) debería funcionar tal cual. Si lo pruebas en otro modelo, abre una issue y se añade a esta tabla con tu nombre.
+
 ## Origen del componente
 
 Este paquete es un **fork adaptado** del componente de la comunidad **TCL AC para ESPHome**.
